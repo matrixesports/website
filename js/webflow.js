@@ -33028,7 +33028,7 @@ function getQuerySelector(_ref) {
       }
     }
 
-    return "[data-w-id^=\"".concat(nodeId, "\"]");
+    return "[data-w-id=\"".concat(nodeId, "\"], [data-w-id^=\"").concat(nodeId, "_instance\"]");
   }
 
   return selector;
@@ -34790,12 +34790,6 @@ Webflow.define('links', module.exports = function ($, _) {
 var Webflow = __webpack_require__(9);
 
 Webflow.define('scroll', module.exports = function ($) {
-  // Native browser events & namespaces used in this module
-  var CLICK = 'click';
-  var CHANGE = 'change';
-  var CHANGE_NS = '.wf-change';
-  var EMPTY_LINK_NS = '.wf-empty-link';
-  var SCROLL_NS = '.wf-scroll';
   /**
    * A collection of namespaced events found in this module.
    * Namespaced events encapsulate our code, and make it safer and easier
@@ -34803,17 +34797,22 @@ Webflow.define('scroll', module.exports = function ($) {
    * @see https://api.jquery.com/on/#event-names
    * @typedef {Object.<string>} NamespacedEventsCollection
    */
-
   var NS_EVENTS = {
-    WF_CHANGE: CHANGE + CHANGE_NS,
-    WF_CLICK_EMPTY: CLICK + EMPTY_LINK_NS,
-    WF_CLICK_SCROLL: CLICK + SCROLL_NS
+    WF_CLICK_EMPTY: 'click.wf-empty-link',
+    WF_CLICK_SCROLL: 'click.wf-scroll'
   };
+  var loc = window.location;
+  var history = inIframe() ? null : window.history;
+  var $win = $(window);
   var $doc = $(document);
-  var win = window;
-  var loc = win.location;
-  var history = inIframe() ? null : win.history;
-  var validHash = /^[a-zA-Z0-9][\w:.-]*$/;
+  var $body = $(document.body);
+
+  var animate = window.requestAnimationFrame || window.mozRequestAnimationFrame || window.webkitRequestAnimationFrame || function (fn) {
+    window.setTimeout(fn, 15);
+  };
+
+  var rootTag = Webflow.env('editor') ? '.w-editor-body' : 'body';
+  var headerSelector = 'header, ' + rootTag + ' > .header, ' + rootTag + ' > .w-nav:not([data-no-scroll])';
   var emptyHrefSelector = 'a[href="#"]';
   /**
    * Select only links whose href:
@@ -34823,62 +34822,71 @@ Webflow.define('scroll', module.exports = function ($) {
    */
 
   var localHrefSelector = 'a[href*="#"]:not(.w-tab-link):not(' + emptyHrefSelector + ')';
-  /**
-   * The current page url, minus the hash.
-   * Will be set in the `ready` function
-   */
-
-  var locHref;
 
   function inIframe() {
     try {
-      return Boolean(win.frameElement);
+      return Boolean(window.frameElement);
     } catch (e) {
       return true;
     }
+  }
+
+  var validHash = /^#[a-zA-Z0-9][\w:.-]*$/;
+  /**
+   * Determine if link navigates to current page
+   * @param {HTMLAnchorElement} link
+   */
+
+  function linksToCurrentPage(link) {
+    return validHash.test(link.hash) && link.host + link.pathname === loc.host + loc.pathname;
+  }
+  /**
+   * Check if the designer has indicated that this page should
+   * have no scroll animation, or if the end user has set
+   * prefers-reduced-motion in their OS
+   */
+
+
+  function reducedMotionEnabled() {
+    // Delete this conditional to enable reduced-motion feature
+    if (!document.body.hasAttribute('data-wf-reduce-scroll-motion')) return false;
+    return document.body.getAttribute('data-wf-scroll-motion') === 'none' || 'function' === typeof window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
   }
   /**
    * Determine if we should execute custom scroll
    */
 
 
-  function validateScroll(e) {
-    if (Webflow.env('design')) {
+  function validateScroll(evt) {
+    var target = evt.currentTarget;
+
+    if ( // Bail if in Designer
+    Webflow.env('design') || // Ignore links being used by jQuery mobile
+    window.$.mobile && /(?:^|\s)ui-link(?:$|\s)/.test(target.className)) {
       return;
-    } // Ignore links being used by jQuery mobile
-
-
-    if (window.$.mobile && $(e.currentTarget).hasClass('ui-link')) {
-      return;
-    } // The href property always contains the full url so we can compare
-    // with the document’s location to only target links on this page.
-
-
-    var parts = this.href.split('#');
-    var hash = parts[0] === locHref ? parts[1] : null;
-
-    if (hash) {
-      findEl(hash, e);
     }
+
+    var hash = linksToCurrentPage(target) ? target.hash : '';
+    if (hash === '') return;
+    var $el = $(hash);
+
+    if (!$el.length) {
+      return;
+    }
+
+    if (evt) {
+      evt.preventDefault();
+      evt.stopPropagation();
+    }
+
+    updateHistory(hash, evt);
+    window.setTimeout(function () {
+      scroll($el);
+    }, evt ? 0 : 300);
   }
 
-  function findEl(hash, e) {
-    if (!validHash.test(hash)) {
-      return;
-    }
-
-    var el = $('#' + hash);
-
-    if (!el.length) {
-      return;
-    }
-
-    if (e) {
-      e.preventDefault();
-      e.stopPropagation();
-    } // Push new history state
-
-
+  function updateHistory(hash) {
+    // Push new history state
     if (loc.hash !== hash && history && history.pushState && // Navigation breaks Chrome when the protocol is `file:`.
     !(Webflow.env.chrome && loc.protocol === 'file:')) {
       var oldHash = history.state && history.state.hash;
@@ -34886,66 +34894,60 @@ Webflow.define('scroll', module.exports = function ($) {
       if (oldHash !== hash) {
         history.pushState({
           hash: hash
-        }, '', '#' + hash);
+        }, '', hash);
       }
-    } // If a fixed header exists, offset for the height
-
-
-    var rootTag = Webflow.env('editor') ? '.w-editor-body' : 'body';
-    var header = $('header, ' + rootTag + ' > .header, ' + rootTag + ' > .w-nav:not([data-no-scroll])');
-    var offset = header.css('position') === 'fixed' ? header.outerHeight() : 0;
-    win.setTimeout(function () {
-      scroll(el, offset);
-    }, e ? 0 : 300);
+    }
   }
 
-  function scroll(el, offset) {
-    var start = $(win).scrollTop();
-    var end = el.offset().top - offset; // If specified, scroll so that the element ends up in the middle of the viewport
-
-    if (el.data('scroll') === 'mid') {
-      var available = $(win).height() - offset;
-      var elHeight = el.outerHeight();
-
-      if (elHeight < available) {
-        end -= Math.round((available - elHeight) / 2);
-      }
-    }
-
-    var mult = 1; // Check for custom time multiplier on the body and the element
-
-    $('body').add(el).each(function () {
-      var time = parseFloat($(this).attr('data-scroll-time'), 10);
-
-      if (!isNaN(time) && (time === 0 || time > 0)) {
-        mult = time;
-      }
-    }); // Shim for IE8 and below
-
-    if (!Date.now) {
-      Date.now = function () {
-        return new Date().getTime();
-      };
-    }
-
+  function scroll($targetEl) {
+    var start = $win.scrollTop();
+    var end = calculateScrollEndPosition($targetEl);
+    if (start === end) return;
+    var duration = calculateScrollDuration($targetEl, start, end);
     var clock = Date.now();
-
-    var animate = win.requestAnimationFrame || win.mozRequestAnimationFrame || win.webkitRequestAnimationFrame || function (fn) {
-      win.setTimeout(fn, 15);
-    };
-
-    var duration = (472.143 * Math.log(Math.abs(start - end) + 125) - 2000) * mult;
 
     var step = function step() {
       var elapsed = Date.now() - clock;
-      win.scroll(0, getY(start, end, elapsed, duration));
+      window.scroll(0, getY(start, end, elapsed, duration));
 
       if (elapsed <= duration) {
         animate(step);
       }
     };
 
-    step();
+    animate(step);
+  }
+
+  function calculateScrollEndPosition($targetEl) {
+    // If a fixed header exists, offset for the height
+    var $header = $(headerSelector);
+    var offsetY = $header.css('position') === 'fixed' ? $header.outerHeight() : 0;
+    var end = $targetEl.offset().top - offsetY; // If specified, scroll so that the element ends up in the middle of the viewport
+
+    if ($targetEl.data('scroll') === 'mid') {
+      var available = $win.height() - offsetY;
+      var elHeight = $targetEl.outerHeight();
+
+      if (elHeight < available) {
+        end -= Math.round((available - elHeight) / 2);
+      }
+    }
+
+    return end;
+  }
+
+  function calculateScrollDuration($targetEl, start, end) {
+    if (reducedMotionEnabled()) return 0;
+    var mult = 1; // Check for custom time multiplier on the body and the scroll target
+
+    $body.add($targetEl).each(function (_, el) {
+      var time = parseFloat(el.getAttribute('data-scroll-time'));
+
+      if (!isNaN(time) && time >= 0) {
+        mult = time;
+      }
+    });
+    return (472.143 * Math.log(Math.abs(start - end) + 125) - 2000) * mult;
   }
 
   function getY(start, end, elapsed, duration) {
@@ -34958,30 +34960,12 @@ Webflow.define('scroll', module.exports = function ($) {
 
   function ease(t) {
     return t < 0.5 ? 4 * t * t * t : (t - 1) * (2 * t - 2) * (2 * t - 2) + 1;
-  } // TODO: Re-implement after customer-facing comms
-  // function handleReducedMotionChange(evt) {
-  //   var {WF_CLICK_SCROLL} = NS_EVENTS;
-  //   if (evt.target.matches) {
-  //     $doc.off(WF_CLICK_SCROLL);
-  //   } else {
-  //     $doc.on(WF_CLICK_SCROLL, localHrefSelector, validateScroll);
-  //   }
-  // }
-
+  }
 
   function ready() {
-    // eslint-disable-next-line no-unused-vars
-    var WF_CHANGE = NS_EVENTS.WF_CHANGE,
-        WF_CLICK_EMPTY = NS_EVENTS.WF_CLICK_EMPTY,
+    var WF_CLICK_EMPTY = NS_EVENTS.WF_CLICK_EMPTY,
         WF_CLICK_SCROLL = NS_EVENTS.WF_CLICK_SCROLL;
-    locHref = loc.href.split('#')[0]; // var reducedMotionQ = window.matchMedia(
-    //   '(prefers-reduced-motion: reduce)'
-    // );
-    // if (!reducedMotionQ.matches) {
-
-    $doc.on(WF_CLICK_SCROLL, localHrefSelector, validateScroll); // }
-    // $(reducedMotionQ).on(WF_CHANGE, handleReducedMotionChange);
-
+    $doc.on(WF_CLICK_SCROLL, localHrefSelector, validateScroll);
     /**
      * Prevent empty hash links from triggering scroll.
      * Legacy feature to preserve: use the default "#" link
@@ -36721,7 +36705,7 @@ Webflow.define('navbar', module.exports = function ($, _) {
     var config = data.config;
     var animation = config.animation;
 
-    if (animation === 'none' || !tram.support.transform) {
+    if (animation === 'none' || !tram.support.transform || config.duration <= 0) {
       immediate = true;
     }
 
@@ -36878,5 +36862,5 @@ Webflow.require('ix').init([
  * Webflow: Interactions 2.0: Init
  */
 Webflow.require('ix2').init(
-{"events":{"e-9":{"id":"e-9","name":"","animationType":"custom","eventTypeId":"MOUSE_OVER","action":{"id":"","actionTypeId":"GENERAL_START_ACTION","config":{"delay":0,"easing":"","duration":0,"actionListId":"a-4","affectedElements":{},"playInReverse":false,"autoStopEventId":"e-10"}},"mediaQueries":["main","medium","small","tiny"],"target":{"id":"03eca054-4218-ad4b-685e-6001c49467a1","appliesTo":"ELEMENT","styleBlockIds":[]},"targets":[{"id":"03eca054-4218-ad4b-685e-6001c49467a1","appliesTo":"ELEMENT","styleBlockIds":[]}],"config":{"loop":false,"playInReverse":false,"scrollOffsetValue":null,"scrollOffsetUnit":null,"delay":null,"direction":null,"effectIn":null},"createdOn":1608618505181},"e-10":{"id":"e-10","name":"","animationType":"custom","eventTypeId":"MOUSE_OUT","action":{"id":"","actionTypeId":"GENERAL_START_ACTION","config":{"delay":0,"easing":"","duration":0,"actionListId":"a-4","affectedElements":{},"playInReverse":false,"autoStopEventId":"e-9"}},"mediaQueries":["main","medium","small","tiny"],"target":{"id":"03eca054-4218-ad4b-685e-6001c49467a1","appliesTo":"ELEMENT","styleBlockIds":[]},"targets":[{"id":"03eca054-4218-ad4b-685e-6001c49467a1","appliesTo":"ELEMENT","styleBlockIds":[]}],"config":{"loop":false,"playInReverse":false,"scrollOffsetValue":null,"scrollOffsetUnit":null,"delay":null,"direction":null,"effectIn":null},"createdOn":1608618505182},"e-11":{"id":"e-11","name":"","animationType":"custom","eventTypeId":"MOUSE_OVER","action":{"id":"","actionTypeId":"GENERAL_START_ACTION","config":{"delay":0,"easing":"","duration":0,"actionListId":"a-4","affectedElements":{},"playInReverse":false,"autoStopEventId":"e-12"}},"mediaQueries":["main","medium","small","tiny"],"target":{"id":"03eca054-4218-ad4b-685e-6001c494679f","appliesTo":"ELEMENT","styleBlockIds":[]},"targets":[{"id":"03eca054-4218-ad4b-685e-6001c494679f","appliesTo":"ELEMENT","styleBlockIds":[]}],"config":{"loop":false,"playInReverse":false,"scrollOffsetValue":null,"scrollOffsetUnit":null,"delay":null,"direction":null,"effectIn":null},"createdOn":1608618593712},"e-12":{"id":"e-12","name":"","animationType":"custom","eventTypeId":"MOUSE_OUT","action":{"id":"","actionTypeId":"GENERAL_START_ACTION","config":{"delay":0,"easing":"","duration":0,"actionListId":"a-4","affectedElements":{},"playInReverse":false,"autoStopEventId":"e-11"}},"mediaQueries":["main","medium","small","tiny"],"target":{"id":"03eca054-4218-ad4b-685e-6001c494679f","appliesTo":"ELEMENT","styleBlockIds":[]},"targets":[{"id":"03eca054-4218-ad4b-685e-6001c494679f","appliesTo":"ELEMENT","styleBlockIds":[]}],"config":{"loop":false,"playInReverse":false,"scrollOffsetValue":null,"scrollOffsetUnit":null,"delay":null,"direction":null,"effectIn":null},"createdOn":1608618593713},"e-13":{"id":"e-13","name":"","animationType":"custom","eventTypeId":"DROPDOWN_OPEN","action":{"id":"","actionTypeId":"GENERAL_START_ACTION","config":{"delay":0,"easing":"","duration":0,"actionListId":"a-9","affectedElements":{},"playInReverse":false,"autoStopEventId":"e-14"}},"mediaQueries":["main","medium","small","tiny"],"target":{"id":"5ff89f588f0fe0325345bdf6|3f951b2d-4678-a56d-ef13-9cfe68f91002","appliesTo":"ELEMENT","styleBlockIds":[]},"targets":[{"id":"5ff89f588f0fe0325345bdf6|3f951b2d-4678-a56d-ef13-9cfe68f91002","appliesTo":"ELEMENT","styleBlockIds":[]}],"config":{"loop":false,"playInReverse":false,"scrollOffsetValue":null,"scrollOffsetUnit":null,"delay":null,"direction":null,"effectIn":null},"createdOn":1570756208102},"e-14":{"id":"e-14","name":"","animationType":"custom","eventTypeId":"DROPDOWN_CLOSE","action":{"id":"","actionTypeId":"GENERAL_START_ACTION","config":{"delay":0,"easing":"","duration":0,"actionListId":"a-10","affectedElements":{},"playInReverse":false,"autoStopEventId":"e-13"}},"mediaQueries":["main","medium","small","tiny"],"target":{"id":"5ff89f588f0fe0325345bdf6|3f951b2d-4678-a56d-ef13-9cfe68f91002","appliesTo":"ELEMENT","styleBlockIds":[]},"targets":[{"id":"5ff89f588f0fe0325345bdf6|3f951b2d-4678-a56d-ef13-9cfe68f91002","appliesTo":"ELEMENT","styleBlockIds":[]}],"config":{"loop":false,"playInReverse":false,"scrollOffsetValue":null,"scrollOffsetUnit":null,"delay":null,"direction":null,"effectIn":null},"createdOn":1570756208104},"e-15":{"id":"e-15","name":"","animationType":"custom","eventTypeId":"DROPDOWN_OPEN","action":{"id":"","actionTypeId":"GENERAL_START_ACTION","config":{"delay":0,"easing":"","duration":0,"actionListId":"a-9","affectedElements":{},"playInReverse":false,"autoStopEventId":"e-16"}},"mediaQueries":["main","medium","small","tiny"],"target":{"id":"5ff89f588f0fe0325345bdf6|3f951b2d-4678-a56d-ef13-9cfe68f9100c","appliesTo":"ELEMENT","styleBlockIds":[]},"targets":[{"id":"5ff89f588f0fe0325345bdf6|3f951b2d-4678-a56d-ef13-9cfe68f9100c","appliesTo":"ELEMENT","styleBlockIds":[]}],"config":{"loop":false,"playInReverse":false,"scrollOffsetValue":null,"scrollOffsetUnit":null,"delay":null,"direction":null,"effectIn":null},"createdOn":1570759199478},"e-16":{"id":"e-16","name":"","animationType":"custom","eventTypeId":"DROPDOWN_CLOSE","action":{"id":"","actionTypeId":"GENERAL_START_ACTION","config":{"delay":0,"easing":"","duration":0,"actionListId":"a-10","affectedElements":{},"playInReverse":false,"autoStopEventId":"e-15"}},"mediaQueries":["main","medium","small","tiny"],"target":{"id":"5ff89f588f0fe0325345bdf6|3f951b2d-4678-a56d-ef13-9cfe68f9100c","appliesTo":"ELEMENT","styleBlockIds":[]},"targets":[{"id":"5ff89f588f0fe0325345bdf6|3f951b2d-4678-a56d-ef13-9cfe68f9100c","appliesTo":"ELEMENT","styleBlockIds":[]}],"config":{"loop":false,"playInReverse":false,"scrollOffsetValue":null,"scrollOffsetUnit":null,"delay":null,"direction":null,"effectIn":null},"createdOn":1570759199478},"e-17":{"id":"e-17","name":"","animationType":"custom","eventTypeId":"DROPDOWN_OPEN","action":{"id":"","actionTypeId":"GENERAL_START_ACTION","config":{"delay":0,"easing":"","duration":0,"actionListId":"a-9","affectedElements":{},"playInReverse":false,"autoStopEventId":"e-18"}},"mediaQueries":["main","medium","small","tiny"],"target":{"id":"5ff89f588f0fe0325345bdf6|3f951b2d-4678-a56d-ef13-9cfe68f91017","appliesTo":"ELEMENT","styleBlockIds":[]},"targets":[{"id":"5ff89f588f0fe0325345bdf6|3f951b2d-4678-a56d-ef13-9cfe68f91017","appliesTo":"ELEMENT","styleBlockIds":[]}],"config":{"loop":false,"playInReverse":false,"scrollOffsetValue":null,"scrollOffsetUnit":null,"delay":null,"direction":null,"effectIn":null},"createdOn":1570759198979},"e-18":{"id":"e-18","name":"","animationType":"custom","eventTypeId":"DROPDOWN_CLOSE","action":{"id":"","actionTypeId":"GENERAL_START_ACTION","config":{"delay":0,"easing":"","duration":0,"actionListId":"a-10","affectedElements":{},"playInReverse":false,"autoStopEventId":"e-17"}},"mediaQueries":["main","medium","small","tiny"],"target":{"id":"5ff89f588f0fe0325345bdf6|3f951b2d-4678-a56d-ef13-9cfe68f91017","appliesTo":"ELEMENT","styleBlockIds":[]},"targets":[{"id":"5ff89f588f0fe0325345bdf6|3f951b2d-4678-a56d-ef13-9cfe68f91017","appliesTo":"ELEMENT","styleBlockIds":[]}],"config":{"loop":false,"playInReverse":false,"scrollOffsetValue":null,"scrollOffsetUnit":null,"delay":null,"direction":null,"effectIn":null},"createdOn":1570759198979},"e-19":{"id":"e-19","name":"","animationType":"custom","eventTypeId":"DROPDOWN_OPEN","action":{"id":"","actionTypeId":"GENERAL_START_ACTION","config":{"delay":0,"easing":"","duration":0,"actionListId":"a-9","affectedElements":{},"playInReverse":false,"autoStopEventId":"e-20"}},"mediaQueries":["main","medium","small","tiny"],"target":{"id":"5ff89f588f0fe0325345bdf6|89705fe4-1e44-60e2-adbf-85acd239b2ee","appliesTo":"ELEMENT","styleBlockIds":[]},"targets":[{"id":"5ff89f588f0fe0325345bdf6|89705fe4-1e44-60e2-adbf-85acd239b2ee","appliesTo":"ELEMENT","styleBlockIds":[]}],"config":{"loop":false,"playInReverse":false,"scrollOffsetValue":null,"scrollOffsetUnit":null,"delay":null,"direction":null,"effectIn":null},"createdOn":1610222535825},"e-20":{"id":"e-20","name":"","animationType":"custom","eventTypeId":"DROPDOWN_CLOSE","action":{"id":"","actionTypeId":"GENERAL_START_ACTION","config":{"delay":0,"easing":"","duration":0,"actionListId":"a-10","affectedElements":{},"playInReverse":false,"autoStopEventId":"e-19"}},"mediaQueries":["main","medium","small","tiny"],"target":{"id":"5ff89f588f0fe0325345bdf6|89705fe4-1e44-60e2-adbf-85acd239b2ee","appliesTo":"ELEMENT","styleBlockIds":[]},"targets":[{"id":"5ff89f588f0fe0325345bdf6|89705fe4-1e44-60e2-adbf-85acd239b2ee","appliesTo":"ELEMENT","styleBlockIds":[]}],"config":{"loop":false,"playInReverse":false,"scrollOffsetValue":null,"scrollOffsetUnit":null,"delay":null,"direction":null,"effectIn":null},"createdOn":1610222535832}},"actionLists":{"a-4":{"id":"a-4","title":"red to white","actionItemGroups":[{"actionItems":[{"id":"a-4-n","actionTypeId":"STYLE_TEXT_COLOR","config":{"delay":0,"easing":"","duration":500,"target":{"useEventTarget":true,"id":"03eca054-4218-ad4b-685e-6001c494679f"},"globalSwatchId":"","rValue":205,"bValue":56,"gValue":6,"aValue":1}}]},{"actionItems":[{"id":"a-4-n-2","actionTypeId":"STYLE_TEXT_COLOR","config":{"delay":0,"easing":"","duration":100000,"target":{"useEventTarget":true,"id":"03eca054-4218-ad4b-685e-6001c494679f"},"globalSwatchId":"","rValue":255,"bValue":255,"gValue":255,"aValue":1}}]}],"useFirstGroupAsInitialState":false,"createdOn":1608618201985},"a-9":{"id":"a-9","title":"FAQ Open","actionItemGroups":[{"actionItems":[{"id":"a-9-n","actionTypeId":"STYLE_SIZE","config":{"delay":0,"easing":"outQuint","duration":800,"target":{"useEventTarget":true,"id":"5ff89f588f0fe0325345bdf6|3f951b2d-4678-a56d-ef13-9cfe68f91002"},"heightValue":80,"widthUnit":"PX","heightUnit":"PX","locked":false}},{"id":"a-9-n-2","actionTypeId":"PLUGIN_LOTTIE","config":{"delay":0,"easing":"","duration":500,"target":{"useEventTarget":"CHILDREN","selector":".faq-icon","selectorGuids":["9a008f94-4324-99b6-c810-d668abfaba7a"]},"value":0}}]},{"actionItems":[{"id":"a-9-n-3","actionTypeId":"STYLE_SIZE","config":{"delay":0,"easing":"outQuint","duration":800,"target":{"useEventTarget":true,"id":"5ff89f588f0fe0325345bdf6|3f951b2d-4678-a56d-ef13-9cfe68f91002"},"heightValue":60,"widthUnit":"PX","heightUnit":"AUTO","locked":false}},{"id":"a-9-n-4","actionTypeId":"PLUGIN_LOTTIE","config":{"delay":0,"easing":"outQuint","duration":1500,"target":{"useEventTarget":"CHILDREN","selector":".faq-icon","selectorGuids":["9a008f94-4324-99b6-c810-d668abfaba7a"]},"value":99}}]}],"useFirstGroupAsInitialState":true,"createdOn":1570756212282},"a-10":{"id":"a-10","title":"FAQ Close","actionItemGroups":[{"actionItems":[{"id":"a-10-n","actionTypeId":"STYLE_SIZE","config":{"delay":0,"easing":"outQuint","duration":800,"target":{"useEventTarget":true,"id":"5ff89f588f0fe0325345bdf6|3f951b2d-4678-a56d-ef13-9cfe68f91002"},"heightValue":80,"widthUnit":"PX","heightUnit":"PX","locked":false}},{"id":"a-10-n-2","actionTypeId":"PLUGIN_LOTTIE","config":{"delay":0,"easing":"outQuint","duration":1500,"target":{"useEventTarget":"CHILDREN","selector":".faq-icon","selectorGuids":["9a008f94-4324-99b6-c810-d668abfaba7a"]},"value":0}}]}],"useFirstGroupAsInitialState":false,"createdOn":1570756212282}},"site":{"mediaQueries":[{"key":"main","min":992,"max":10000},{"key":"medium","min":768,"max":991},{"key":"small","min":480,"max":767},{"key":"tiny","min":0,"max":479}]}}
+{"events":{"e-9":{"id":"e-9","name":"","animationType":"custom","eventTypeId":"MOUSE_OVER","action":{"id":"","actionTypeId":"GENERAL_START_ACTION","config":{"delay":0,"easing":"","duration":0,"actionListId":"a-11","affectedElements":{},"playInReverse":false,"autoStopEventId":"e-10"}},"mediaQueries":["main","medium","small","tiny"],"target":{"id":"03eca054-4218-ad4b-685e-6001c49467a1","appliesTo":"ELEMENT","styleBlockIds":[]},"targets":[{"id":"03eca054-4218-ad4b-685e-6001c49467a1","appliesTo":"ELEMENT","styleBlockIds":[]}],"config":{"loop":false,"playInReverse":false,"scrollOffsetValue":null,"scrollOffsetUnit":null,"delay":null,"direction":null,"effectIn":null},"createdOn":1608618505181},"e-10":{"id":"e-10","name":"","animationType":"custom","eventTypeId":"MOUSE_OUT","action":{"id":"","actionTypeId":"GENERAL_START_ACTION","config":{"delay":0,"easing":"","duration":0,"actionListId":"a-3","affectedElements":{},"playInReverse":false,"autoStopEventId":"e-9"}},"mediaQueries":["main","medium","small","tiny"],"target":{"id":"03eca054-4218-ad4b-685e-6001c49467a1","appliesTo":"ELEMENT","styleBlockIds":[]},"targets":[{"id":"03eca054-4218-ad4b-685e-6001c49467a1","appliesTo":"ELEMENT","styleBlockIds":[]}],"config":{"loop":false,"playInReverse":false,"scrollOffsetValue":null,"scrollOffsetUnit":null,"delay":null,"direction":null,"effectIn":null},"createdOn":1608618505182},"e-11":{"id":"e-11","name":"","animationType":"custom","eventTypeId":"MOUSE_OVER","action":{"id":"","actionTypeId":"GENERAL_START_ACTION","config":{"delay":0,"easing":"","duration":0,"actionListId":"a-11","affectedElements":{},"playInReverse":false,"autoStopEventId":"e-12"}},"mediaQueries":["main","medium","small","tiny"],"target":{"id":"03eca054-4218-ad4b-685e-6001c494679f","appliesTo":"ELEMENT","styleBlockIds":[]},"targets":[{"id":"03eca054-4218-ad4b-685e-6001c494679f","appliesTo":"ELEMENT","styleBlockIds":[]}],"config":{"loop":false,"playInReverse":false,"scrollOffsetValue":null,"scrollOffsetUnit":null,"delay":null,"direction":null,"effectIn":null},"createdOn":1608618593712},"e-12":{"id":"e-12","name":"","animationType":"custom","eventTypeId":"MOUSE_OUT","action":{"id":"","actionTypeId":"GENERAL_START_ACTION","config":{"delay":0,"easing":"","duration":0,"actionListId":"a-3","affectedElements":{},"playInReverse":false,"autoStopEventId":"e-11"}},"mediaQueries":["main","medium","small","tiny"],"target":{"id":"03eca054-4218-ad4b-685e-6001c494679f","appliesTo":"ELEMENT","styleBlockIds":[]},"targets":[{"id":"03eca054-4218-ad4b-685e-6001c494679f","appliesTo":"ELEMENT","styleBlockIds":[]}],"config":{"loop":false,"playInReverse":false,"scrollOffsetValue":null,"scrollOffsetUnit":null,"delay":null,"direction":null,"effectIn":null},"createdOn":1608618593713},"e-15":{"id":"e-15","name":"","animationType":"custom","eventTypeId":"DROPDOWN_OPEN","action":{"id":"","actionTypeId":"GENERAL_START_ACTION","config":{"delay":0,"easing":"","duration":0,"actionListId":"a-9","affectedElements":{},"playInReverse":false,"autoStopEventId":"e-16"}},"mediaQueries":["main","medium","small","tiny"],"target":{"id":"5ff89f588f0fe0325345bdf6|3f951b2d-4678-a56d-ef13-9cfe68f9100c","appliesTo":"ELEMENT","styleBlockIds":[]},"targets":[{"id":"5ff89f588f0fe0325345bdf6|3f951b2d-4678-a56d-ef13-9cfe68f9100c","appliesTo":"ELEMENT","styleBlockIds":[]}],"config":{"loop":false,"playInReverse":false,"scrollOffsetValue":null,"scrollOffsetUnit":null,"delay":null,"direction":null,"effectIn":null},"createdOn":1570759199478},"e-16":{"id":"e-16","name":"","animationType":"custom","eventTypeId":"DROPDOWN_CLOSE","action":{"id":"","actionTypeId":"GENERAL_START_ACTION","config":{"delay":0,"easing":"","duration":0,"actionListId":"a-10","affectedElements":{},"playInReverse":false,"autoStopEventId":"e-15"}},"mediaQueries":["main","medium","small","tiny"],"target":{"id":"5ff89f588f0fe0325345bdf6|3f951b2d-4678-a56d-ef13-9cfe68f9100c","appliesTo":"ELEMENT","styleBlockIds":[]},"targets":[{"id":"5ff89f588f0fe0325345bdf6|3f951b2d-4678-a56d-ef13-9cfe68f9100c","appliesTo":"ELEMENT","styleBlockIds":[]}],"config":{"loop":false,"playInReverse":false,"scrollOffsetValue":null,"scrollOffsetUnit":null,"delay":null,"direction":null,"effectIn":null},"createdOn":1570759199478},"e-17":{"id":"e-17","name":"","animationType":"custom","eventTypeId":"DROPDOWN_OPEN","action":{"id":"","actionTypeId":"GENERAL_START_ACTION","config":{"delay":0,"easing":"","duration":0,"actionListId":"a-9","affectedElements":{},"playInReverse":false,"autoStopEventId":"e-18"}},"mediaQueries":["main","medium","small","tiny"],"target":{"id":"5ff89f588f0fe0325345bdf6|3f951b2d-4678-a56d-ef13-9cfe68f91017","appliesTo":"ELEMENT","styleBlockIds":[]},"targets":[{"id":"5ff89f588f0fe0325345bdf6|3f951b2d-4678-a56d-ef13-9cfe68f91017","appliesTo":"ELEMENT","styleBlockIds":[]}],"config":{"loop":false,"playInReverse":false,"scrollOffsetValue":null,"scrollOffsetUnit":null,"delay":null,"direction":null,"effectIn":null},"createdOn":1570759198979},"e-18":{"id":"e-18","name":"","animationType":"custom","eventTypeId":"DROPDOWN_CLOSE","action":{"id":"","actionTypeId":"GENERAL_START_ACTION","config":{"delay":0,"easing":"","duration":0,"actionListId":"a-10","affectedElements":{},"playInReverse":false,"autoStopEventId":"e-17"}},"mediaQueries":["main","medium","small","tiny"],"target":{"id":"5ff89f588f0fe0325345bdf6|3f951b2d-4678-a56d-ef13-9cfe68f91017","appliesTo":"ELEMENT","styleBlockIds":[]},"targets":[{"id":"5ff89f588f0fe0325345bdf6|3f951b2d-4678-a56d-ef13-9cfe68f91017","appliesTo":"ELEMENT","styleBlockIds":[]}],"config":{"loop":false,"playInReverse":false,"scrollOffsetValue":null,"scrollOffsetUnit":null,"delay":null,"direction":null,"effectIn":null},"createdOn":1570759198979},"e-23":{"id":"e-23","name":"","animationType":"custom","eventTypeId":"SCROLL_INTO_VIEW","action":{"id":"","actionTypeId":"GENERAL_START_ACTION","config":{"delay":0,"easing":"","duration":0,"actionListId":"a-17","affectedElements":{},"playInReverse":false,"autoStopEventId":"e-24"}},"mediaQueries":["main","medium","small","tiny"],"target":{"id":"5ff89f588f0fe0753b45bdef|2225bae8-31e6-7444-4e31-ddd99fdee03e","appliesTo":"ELEMENT","styleBlockIds":[]},"targets":[{"id":"5ff89f588f0fe0753b45bdef|2225bae8-31e6-7444-4e31-ddd99fdee03e","appliesTo":"ELEMENT","styleBlockIds":[]}],"config":{"loop":false,"playInReverse":false,"scrollOffsetValue":0,"scrollOffsetUnit":"%","delay":0,"direction":null,"effectIn":true},"createdOn":1615778328477},"e-25":{"id":"e-25","name":"","animationType":"custom","eventTypeId":"MOUSE_OVER","action":{"id":"","actionTypeId":"GENERAL_START_ACTION","config":{"delay":0,"easing":"","duration":0,"actionListId":"a-12","affectedElements":{},"playInReverse":false,"autoStopEventId":"e-26"}},"mediaQueries":["main","medium","small","tiny"],"target":{"id":"5ff89f588f0fe0753b45bdef|3aa55d7e-dfab-66d3-b495-6bc3ffac02eb","appliesTo":"ELEMENT","styleBlockIds":[]},"targets":[{"id":"5ff89f588f0fe0753b45bdef|3aa55d7e-dfab-66d3-b495-6bc3ffac02eb","appliesTo":"ELEMENT","styleBlockIds":[]}],"config":{"loop":true,"playInReverse":false,"scrollOffsetValue":null,"scrollOffsetUnit":null,"delay":null,"direction":null,"effectIn":null},"createdOn":1616177370314},"e-26":{"id":"e-26","name":"","animationType":"custom","eventTypeId":"MOUSE_OUT","action":{"id":"","actionTypeId":"GENERAL_START_ACTION","config":{"delay":0,"easing":"","duration":0,"actionListId":"a-16","affectedElements":{},"playInReverse":false,"autoStopEventId":"e-25"}},"mediaQueries":["main","medium","small","tiny"],"target":{"id":"5ff89f588f0fe0753b45bdef|3aa55d7e-dfab-66d3-b495-6bc3ffac02eb","appliesTo":"ELEMENT","styleBlockIds":[]},"targets":[{"id":"5ff89f588f0fe0753b45bdef|3aa55d7e-dfab-66d3-b495-6bc3ffac02eb","appliesTo":"ELEMENT","styleBlockIds":[]}],"config":{"loop":false,"playInReverse":false,"scrollOffsetValue":null,"scrollOffsetUnit":null,"delay":null,"direction":null,"effectIn":null},"createdOn":1616177370315},"e-29":{"id":"e-29","name":"","animationType":"preset","eventTypeId":"SCROLL_INTO_VIEW","action":{"id":"","actionTypeId":"FADE_EFFECT","instant":false,"config":{"actionListId":"fadeIn","autoStopEventId":"e-30"}},"mediaQueries":["main","medium","small","tiny"],"target":{"id":"5ff89f588f0fe0753b45bdef|49f113c6-e218-51ad-6556-b355afffb864","appliesTo":"ELEMENT","styleBlockIds":[]},"targets":[{"id":"5ff89f588f0fe0753b45bdef|49f113c6-e218-51ad-6556-b355afffb864","appliesTo":"ELEMENT","styleBlockIds":[]}],"config":{"loop":false,"playInReverse":false,"scrollOffsetValue":0,"scrollOffsetUnit":"%","delay":500,"direction":null,"effectIn":true},"createdOn":1616284842628},"e-31":{"id":"e-31","name":"","animationType":"preset","eventTypeId":"SCROLL_INTO_VIEW","action":{"id":"","actionTypeId":"FADE_EFFECT","instant":false,"config":{"actionListId":"fadeIn","autoStopEventId":"e-32"}},"mediaQueries":["main","medium","small","tiny"],"target":{"id":"5ff89f588f0fe0753b45bdef|7d60c1c0-62fa-045c-f4d5-7d7442697704","appliesTo":"ELEMENT","styleBlockIds":[]},"targets":[{"id":"5ff89f588f0fe0753b45bdef|7d60c1c0-62fa-045c-f4d5-7d7442697704","appliesTo":"ELEMENT","styleBlockIds":[]}],"config":{"loop":false,"playInReverse":false,"scrollOffsetValue":0,"scrollOffsetUnit":"%","delay":500,"direction":null,"effectIn":true},"createdOn":1616285183684},"e-33":{"id":"e-33","name":"","animationType":"preset","eventTypeId":"SCROLL_INTO_VIEW","action":{"id":"","actionTypeId":"FADE_EFFECT","instant":false,"config":{"actionListId":"fadeIn","autoStopEventId":"e-34"}},"mediaQueries":["main","medium","small","tiny"],"target":{"id":"5ff89f588f0fe0753b45bdef|3aa55d7e-dfab-66d3-b495-6bc3ffac02eb","appliesTo":"ELEMENT","styleBlockIds":[]},"targets":[{"id":"5ff89f588f0fe0753b45bdef|3aa55d7e-dfab-66d3-b495-6bc3ffac02eb","appliesTo":"ELEMENT","styleBlockIds":[]}],"config":{"loop":false,"playInReverse":false,"scrollOffsetValue":0,"scrollOffsetUnit":"%","delay":500,"direction":null,"effectIn":true},"createdOn":1616285225603},"e-35":{"id":"e-35","name":"","animationType":"preset","eventTypeId":"DROPDOWN_OPEN","action":{"id":"","actionTypeId":"GENERAL_START_ACTION","config":{"delay":0,"easing":"","duration":0,"actionListId":"a-9","affectedElements":{},"playInReverse":false,"autoStopEventId":"e-36"}},"mediaQueries":["main","medium","small","tiny"],"target":{"id":"5ff89f588f0fe0325345bdf6|7a8f1eea-88a6-32bf-72a9-caf5dd875e92","appliesTo":"ELEMENT","styleBlockIds":[]},"targets":[],"config":{"loop":false,"playInReverse":false,"scrollOffsetValue":null,"scrollOffsetUnit":null,"delay":null,"direction":null,"effectIn":null},"createdOn":1617382078295},"e-36":{"id":"e-36","name":"","animationType":"preset","eventTypeId":"DROPDOWN_CLOSE","action":{"id":"","actionTypeId":"GENERAL_START_ACTION","config":{"delay":0,"easing":"","duration":0,"actionListId":"a-10","affectedElements":{},"playInReverse":false,"autoStopEventId":"e-35"}},"mediaQueries":["main","medium","small","tiny"],"target":{"id":"5ff89f588f0fe0325345bdf6|7a8f1eea-88a6-32bf-72a9-caf5dd875e92","appliesTo":"ELEMENT","styleBlockIds":[]},"targets":[],"config":{"loop":false,"playInReverse":false,"scrollOffsetValue":null,"scrollOffsetUnit":null,"delay":null,"direction":null,"effectIn":null},"createdOn":1617382078295},"e-37":{"id":"e-37","name":"","animationType":"preset","eventTypeId":"DROPDOWN_OPEN","action":{"id":"","actionTypeId":"GENERAL_START_ACTION","config":{"delay":0,"easing":"","duration":0,"actionListId":"a-9","affectedElements":{},"playInReverse":false,"autoStopEventId":"e-38"}},"mediaQueries":["main","medium","small","tiny"],"target":{"id":"5ff89f588f0fe0325345bdf6|2c759f00-5ef2-dadf-05cc-76abb36e12b8","appliesTo":"ELEMENT","styleBlockIds":[]},"targets":[],"config":{"loop":false,"playInReverse":false,"scrollOffsetValue":null,"scrollOffsetUnit":null,"delay":null,"direction":null,"effectIn":null},"createdOn":1617382194419},"e-38":{"id":"e-38","name":"","animationType":"preset","eventTypeId":"DROPDOWN_CLOSE","action":{"id":"","actionTypeId":"GENERAL_START_ACTION","config":{"delay":0,"easing":"","duration":0,"actionListId":"a-10","affectedElements":{},"playInReverse":false,"autoStopEventId":"e-37"}},"mediaQueries":["main","medium","small","tiny"],"target":{"id":"5ff89f588f0fe0325345bdf6|2c759f00-5ef2-dadf-05cc-76abb36e12b8","appliesTo":"ELEMENT","styleBlockIds":[]},"targets":[],"config":{"loop":false,"playInReverse":false,"scrollOffsetValue":null,"scrollOffsetUnit":null,"delay":null,"direction":null,"effectIn":null},"createdOn":1617382194419},"e-39":{"id":"e-39","name":"","animationType":"preset","eventTypeId":"DROPDOWN_OPEN","action":{"id":"","actionTypeId":"GENERAL_START_ACTION","config":{"delay":0,"easing":"","duration":0,"actionListId":"a-9","affectedElements":{},"playInReverse":false,"autoStopEventId":"e-40"}},"mediaQueries":["main","medium","small","tiny"],"target":{"id":"5ff89f588f0fe0325345bdf6|2d744203-8a5c-7f39-1fd7-4849ccdc0300","appliesTo":"ELEMENT","styleBlockIds":[]},"targets":[],"config":{"loop":false,"playInReverse":false,"scrollOffsetValue":null,"scrollOffsetUnit":null,"delay":null,"direction":null,"effectIn":null},"createdOn":1617382197754},"e-40":{"id":"e-40","name":"","animationType":"preset","eventTypeId":"DROPDOWN_CLOSE","action":{"id":"","actionTypeId":"GENERAL_START_ACTION","config":{"delay":0,"easing":"","duration":0,"actionListId":"a-10","affectedElements":{},"playInReverse":false,"autoStopEventId":"e-39"}},"mediaQueries":["main","medium","small","tiny"],"target":{"id":"5ff89f588f0fe0325345bdf6|2d744203-8a5c-7f39-1fd7-4849ccdc0300","appliesTo":"ELEMENT","styleBlockIds":[]},"targets":[],"config":{"loop":false,"playInReverse":false,"scrollOffsetValue":null,"scrollOffsetUnit":null,"delay":null,"direction":null,"effectIn":null},"createdOn":1617382197754}},"actionLists":{"a-11":{"id":"a-11","title":"Cyan to Magenta","actionItemGroups":[{"actionItems":[{"id":"a-11-n","actionTypeId":"STYLE_TEXT_COLOR","config":{"delay":0,"easing":"","duration":500,"target":{"useEventTarget":true,"id":"03eca054-4218-ad4b-685e-6001c494679f"},"globalSwatchId":"","rValue":1,"bValue":254,"gValue":251,"aValue":1}}]},{"actionItems":[{"id":"a-11-n-2","actionTypeId":"STYLE_TEXT_COLOR","config":{"delay":0,"easing":"","duration":250,"target":{"useEventTarget":true,"id":"03eca054-4218-ad4b-685e-6001c494679f"},"globalSwatchId":"","rValue":225,"bValue":228,"gValue":13,"aValue":1}}]}],"useFirstGroupAsInitialState":true,"createdOn":1614560419714},"a-3":{"id":"a-3","title":"Magenta to Cyan","actionItemGroups":[{"actionItems":[{"id":"a-3-n-2","actionTypeId":"STYLE_TEXT_COLOR","config":{"delay":0,"easing":"","duration":0,"target":{"useEventTarget":true,"id":"03eca054-4218-ad4b-685e-6001c494679f"},"globalSwatchId":"","rValue":225,"bValue":228,"gValue":13,"aValue":1}}]},{"actionItems":[{"id":"a-3-n","actionTypeId":"STYLE_TEXT_COLOR","config":{"delay":0,"easing":"","duration":250,"target":{"useEventTarget":true,"id":"03eca054-4218-ad4b-685e-6001c494679f"},"globalSwatchId":"","rValue":1,"bValue":254,"gValue":251,"aValue":1}}]}],"useFirstGroupAsInitialState":false,"createdOn":1608617954848},"a-9":{"id":"a-9","title":"FAQ Open","actionItemGroups":[{"actionItems":[{"id":"a-9-n","actionTypeId":"STYLE_SIZE","config":{"delay":0,"easing":"outQuint","duration":800,"target":{"useEventTarget":true,"id":"5ff89f588f0fe0325345bdf6|3f951b2d-4678-a56d-ef13-9cfe68f91002"},"heightValue":80,"widthUnit":"PX","heightUnit":"PX","locked":false}},{"id":"a-9-n-2","actionTypeId":"PLUGIN_LOTTIE","config":{"delay":0,"easing":"","duration":500,"target":{"useEventTarget":"CHILDREN","selector":".faq-icon","selectorGuids":["9a008f94-4324-99b6-c810-d668abfaba7a"]},"value":0}}]},{"actionItems":[{"id":"a-9-n-3","actionTypeId":"STYLE_SIZE","config":{"delay":0,"easing":"outQuint","duration":800,"target":{"useEventTarget":true,"id":"5ff89f588f0fe0325345bdf6|3f951b2d-4678-a56d-ef13-9cfe68f91002"},"heightValue":60,"widthUnit":"PX","heightUnit":"AUTO","locked":false}},{"id":"a-9-n-4","actionTypeId":"PLUGIN_LOTTIE","config":{"delay":0,"easing":"outQuint","duration":1500,"target":{"useEventTarget":"CHILDREN","selector":".faq-icon","selectorGuids":["9a008f94-4324-99b6-c810-d668abfaba7a"]},"value":99}}]}],"useFirstGroupAsInitialState":true,"createdOn":1570756212282},"a-10":{"id":"a-10","title":"FAQ Close","actionItemGroups":[{"actionItems":[{"id":"a-10-n","actionTypeId":"STYLE_SIZE","config":{"delay":0,"easing":"outQuint","duration":800,"target":{"useEventTarget":true,"id":"5ff89f588f0fe0325345bdf6|3f951b2d-4678-a56d-ef13-9cfe68f91002"},"heightValue":80,"widthUnit":"PX","heightUnit":"PX","locked":false}},{"id":"a-10-n-2","actionTypeId":"PLUGIN_LOTTIE","config":{"delay":0,"easing":"outQuint","duration":1500,"target":{"useEventTarget":"CHILDREN","selector":".faq-icon","selectorGuids":["9a008f94-4324-99b6-c810-d668abfaba7a"]},"value":0}}]}],"useFirstGroupAsInitialState":false,"createdOn":1570756212282},"a-17":{"id":"a-17","title":"Logo Fade-In","actionItemGroups":[{"actionItems":[{"id":"a-17-n-3","actionTypeId":"STYLE_OPACITY","config":{"delay":0,"easing":"","duration":500,"target":{"useEventTarget":true,"id":"5ff89f588f0fe0753b45bdef|2225bae8-31e6-7444-4e31-ddd99fdee03e"},"value":0,"unit":""}}]},{"actionItems":[{"id":"a-17-n-2","actionTypeId":"STYLE_OPACITY","config":{"delay":500,"easing":"","duration":0,"target":{"useEventTarget":true,"id":"5ff89f588f0fe0753b45bdef|2225bae8-31e6-7444-4e31-ddd99fdee03e"},"value":1,"unit":""}}]}],"useFirstGroupAsInitialState":true,"createdOn":1616284423667},"a-12":{"id":"a-12","title":"Rotate Home Logo","actionItemGroups":[{"actionItems":[{"id":"a-12-n-2","actionTypeId":"TRANSFORM_ROTATE","config":{"delay":0,"easing":"","duration":3000,"target":{"id":"5ff89f588f0fe0753b45bdef|3aa55d7e-dfab-66d3-b495-6bc3ffac02eb"},"zValue":360,"xUnit":"DEG","yUnit":"DEG","zUnit":"deg"}}]},{"actionItems":[{"id":"a-12-n-3","actionTypeId":"TRANSFORM_ROTATE","config":{"delay":0,"easing":"","duration":0,"target":{"id":"5ff89f588f0fe0753b45bdef|3aa55d7e-dfab-66d3-b495-6bc3ffac02eb"},"zValue":0,"xUnit":"DEG","yUnit":"DEG","zUnit":"deg"}}]}],"useFirstGroupAsInitialState":false,"createdOn":1615770979965},"a-16":{"id":"a-16","title":"Stop Rotation","actionItemGroups":[{"actionItems":[{"id":"a-16-n","actionTypeId":"TRANSFORM_ROTATE","config":{"delay":0,"easing":"","duration":3000,"target":{"useEventTarget":true,"id":"5ff89f588f0fe0753b45bdef|3aa55d7e-dfab-66d3-b495-6bc3ffac02eb"},"zValue":360,"xUnit":"DEG","yUnit":"DEG","zUnit":"deg"}}]},{"actionItems":[{"id":"a-16-n-2","actionTypeId":"TRANSFORM_ROTATE","config":{"delay":0,"easing":"","duration":0,"target":{"useEventTarget":true,"id":"5ff89f588f0fe0753b45bdef|3aa55d7e-dfab-66d3-b495-6bc3ffac02eb"},"zValue":0,"xUnit":"DEG","yUnit":"DEG","zUnit":"deg"}}]}],"useFirstGroupAsInitialState":false,"createdOn":1616208585121},"fadeIn":{"id":"fadeIn","useFirstGroupAsInitialState":true,"actionItemGroups":[{"actionItems":[{"actionTypeId":"STYLE_OPACITY","config":{"delay":0,"duration":0,"target":{"id":"N/A","appliesTo":"TRIGGER_ELEMENT","useEventTarget":true},"value":0}}]},{"actionItems":[{"actionTypeId":"STYLE_OPACITY","config":{"delay":0,"easing":"outQuart","duration":1000,"target":{"id":"N/A","appliesTo":"TRIGGER_ELEMENT","useEventTarget":true},"value":1}}]}]}},"site":{"mediaQueries":[{"key":"main","min":992,"max":10000},{"key":"medium","min":768,"max":991},{"key":"small","min":480,"max":767},{"key":"tiny","min":0,"max":479}]}}
 );

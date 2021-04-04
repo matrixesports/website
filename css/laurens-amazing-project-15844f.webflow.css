@@ -255,12 +255,11 @@ a {
 
 .body {
   background-color: #000;
-  background-image: -webkit-gradient(linear, left top, left bottom, from(rgba(0, 0, 0, 0.73)), to(rgba(0, 0, 0, 0.73)));
-  background-image: linear-gradient(180deg, rgba(0, 0, 0, 0.73), rgba(0, 0, 0, 0.73));
+  background-image: none;
   font-family: Barlow, sans-serif;
   color: #56697e;
-  font-size: 19px;
-  line-height: 23px;
+  font-size: 1em;
+  line-height: 1em;
   font-weight: 300;
   text-align: left;
 }
@@ -303,7 +302,7 @@ a {
 }
 
 .transparent-nav {
-  position: absolute;
+  position: relative;
   left: 0%;
   top: 0%;
   right: 0%;
@@ -354,7 +353,7 @@ a {
   border-bottom-style: none;
   opacity: 1;
   font-family: Avenir, sans-serif;
-  color: #fff;
+  color: #01fbfe;
   font-size: 12px;
   line-height: 23px;
   font-weight: 500;
@@ -369,7 +368,7 @@ a {
 
 .nav-link-2.whitenav.w--current {
   border-bottom: 1px none hsla(0, 0%, 100%, 0.57);
-  color: #cd0638;
+  color: #01fbfe;
   font-weight: 400;
 }
 
@@ -419,7 +418,7 @@ a {
   display: flex;
   overflow: hidden;
   padding-top: 210px;
-  padding-bottom: 190px;
+  padding-bottom: 0px;
   -webkit-box-align: center;
   -webkit-align-items: center;
   -ms-flex-align: center;
@@ -427,7 +426,7 @@ a {
   border-style: none;
   border-width: 0px;
   border-color: #4d4d4d;
-  background-color: #181818;
+  background-color: #000;
 }
 
 .hero.inner {
@@ -650,11 +649,8 @@ a {
 }
 
 .hero-div-holder {
-  display: -webkit-box;
-  display: -webkit-flex;
-  display: -ms-flexbox;
-  display: flex;
-  width: 100%;
+  position: relative;
+  display: block;
   -webkit-box-orient: vertical;
   -webkit-box-direction: normal;
   -webkit-flex-direction: column;
@@ -668,6 +664,10 @@ a {
   -webkit-align-items: center;
   -ms-flex-align: center;
   align-items: center;
+  -webkit-align-self: center;
+  -ms-flex-item-align: center;
+  -ms-grid-row-align: center;
+  align-self: center;
 }
 
 .hero-div-holder.inner.contact {
@@ -2230,8 +2230,23 @@ a {
 }
 
 .div-block-7 {
-  margin-top: 30px;
-  margin-bottom: 50px;
+  position: relative;
+  display: -webkit-box;
+  display: -webkit-flex;
+  display: -ms-flexbox;
+  display: flex;
+  height: 11vh;
+  padding-right: 10vw;
+  padding-left: 10vw;
+  clear: both;
+  -webkit-box-pack: center;
+  -webkit-justify-content: center;
+  -ms-flex-pack: center;
+  justify-content: center;
+  -webkit-box-align: center;
+  -webkit-align-items: center;
+  -ms-flex-align: center;
+  align-items: center;
   color: #fff;
 }
 
@@ -2620,8 +2635,9 @@ a {
 .text-block-11 {
   margin-bottom: 0px;
   font-family: Avenir, sans-serif;
-  font-size: 25px;
+  font-size: 2em;
   font-weight: 800;
+  text-align: center;
 }
 
 .footer {
@@ -2631,7 +2647,7 @@ a {
   -webkit-align-items: flex-start;
   -ms-flex-align: start;
   align-items: flex-start;
-  background-color: #181818;
+  background-color: #000;
   color: #87919b;
   text-align: center;
 }
@@ -2848,7 +2864,7 @@ a {
 .paragraph-12 {
   border-left: 1px solid #000;
   color: #95a5a6;
-  font-size: 14px;
+  font-size: 16px;
   font-weight: 200;
 }
 
@@ -3353,6 +3369,8 @@ a {
   -ms-flex-align: center;
   align-items: center;
   background-color: #cd0638;
+  background-image: -webkit-gradient(linear, left top, right top, from(#e10de4), to(#01fbfe));
+  background-image: linear-gradient(90deg, #e10de4, #01fbfe);
   color: #fff;
   font-size: 16px;
   font-weight: 600;
@@ -3413,6 +3431,56 @@ a {
 
 .bold-text-8 {
   color: #bdc3c7;
+}
+
+.image-12 {
+  display: inline-block;
+  text-align: center;
+}
+
+.column-18 {
+  display: block;
+  padding-right: 0px;
+  padding-left: 145px;
+}
+
+.image-13 {
+  position: absolute;
+  max-width: 50%;
+  clear: both;
+}
+
+.image-14 {
+  position: relative;
+}
+
+.div-block-16 {
+  display: inline-block;
+}
+
+.div-block-17 {
+  position: relative;
+  display: inline-block;
+}
+
+.div-block-18 {
+  position: relative;
+}
+
+.section-3 {
+  display: -webkit-box;
+  display: -webkit-flex;
+  display: -ms-flexbox;
+  display: flex;
+  height: 40vw;
+  -webkit-box-pack: center;
+  -webkit-justify-content: center;
+  -ms-flex-pack: center;
+  justify-content: center;
+  -webkit-box-align: center;
+  -webkit-align-items: center;
+  -ms-flex-align: center;
+  align-items: center;
 }
 
 html.w-mod-js *[data-ix="load-header-btn"] {
@@ -3956,6 +4024,10 @@ html.w-mod-js *[data-ix="fade-on-scroll-3"] {
     flex-direction: row;
   }
 
+  .div-block-7 {
+    line-height: 2em;
+  }
+
   .footer {
     padding-right: 20px;
     padding-left: 20px;
@@ -4007,6 +4079,10 @@ html.w-mod-js *[data-ix="fade-on-scroll-3"] {
     width: 75%;
     margin-top: 20px;
   }
+
+  .section-3 {
+    height: 75vw;
+  }
 }
 
 @media screen and (max-width: 767px) {
@@ -4057,7 +4133,7 @@ html.w-mod-js *[data-ix="fade-on-scroll-3"] {
   }
 
   .transparent-nav {
-    position: absolute;
+    position: relative;
     margin-right: 0px;
     margin-left: 0px;
     padding-bottom: 4px;
@@ -4428,6 +4504,7 @@ html.w-mod-js *[data-ix="fade-on-scroll-3"] {
   }
 
   .transparent-nav {
+    position: relative;
     margin-right: 0px;
     margin-left: 0px;
     padding-top: 5px;
@@ -4805,6 +4882,10 @@ html.w-mod-js *[data-ix="fade-on-scroll-3"] {
     border-top: 1px solid #c4c4c4;
   }
 
+  .text-block-11 {
+    font-size: 1em;
+  }
+
   .footer {
     padding-right: 20px;
     padding-left: 20px;
@@ -4825,6 +4906,10 @@ html.w-mod-js *[data-ix="fade-on-scroll-3"] {
 
   .footer-heading {
     margin-top: 20px;
+  }
+
+  .text-block-12 {
+    text-align: center;
   }
 
   .centered-container {
@@ -4896,17 +4981,21 @@ html.w-mod-js *[data-ix="fade-on-scroll-3"] {
   .faq-img {
     display: none;
   }
+
+  .section-3 {
+    height: 100vw;
+  }
 }
 
 @media screen and (max-width: 479px) {
-  #w-node-2b9a708cf5c3-5345bdf6 {
+  #w-node-c61e660d-4476-5cd3-32d0-2b9a708cf5c3-5345bdf6 {
     -ms-grid-column: span 1;
     grid-column-start: span 1;
     -ms-grid-column-span: 1;
     grid-column-end: span 1;
   }
 
-  #w-node-78fcb80296f2-5345bdf6 {
+  #w-node-_165bc980-691f-3812-1b12-78fcb80296f2-5345bdf6 {
     -ms-grid-column: span 1;
     grid-column-start: span 1;
     -ms-grid-column-span: 1;
